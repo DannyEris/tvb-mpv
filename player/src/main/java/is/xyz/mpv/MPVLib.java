@@ -6,7 +6,17 @@ import android.view.Surface;
 public class MPVLib {
 
     static {
-        System.loadLibrary("mpv");
+        // 按依赖依赖顺序加载底层 Native 库，确保低版本 Android 兼容性
+        try { System.loadLibrary("c++_shared"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("avutil"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("swresample"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("swscale"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("avcodec"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("avformat"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("avfilter"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("avdevice"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("mpv"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("player"); } catch (Throwable ignored) {} // JNI 真正的函数入口库
     }
 
     public static class mpvEventId {
