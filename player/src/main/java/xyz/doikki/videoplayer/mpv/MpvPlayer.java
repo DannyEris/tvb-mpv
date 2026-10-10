@@ -20,8 +20,12 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     protected final Context mAppContext;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private boolean mIsPreparing = false;
+    private boolean mFileStarted = false;
     private int mHdrMode = 0; // 0: 自动, 1: 开启, 2: 关闭
+
     private Surface mSurface;
+    private String mPath;
+    private Map<String, String> mHeaders;
 
     public MpvPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -30,10 +34,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void initPlayer() {
-        try {
-            MPVLib.destroy(); // 避免多实例竞争导致底层 abort 崩溃
-        } catch (Throwable ignored) {}
-
         MPVLib.create(mAppContext);
         MPVLib.setOptionString("vo", "gpu");
         MPVLib.setOptionString("gpu-context", "android");
@@ -41,7 +41,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("hwdec-codecs", "all");
         MPVLib.setOptionString("hdr-compute-peak", "no");
 
-        // 针对电视盒子 4K 网盘高码率音频的解决配置：启用 OpenSL ES 强行下混为立体声输出
+        // 强行启用软解下混双声道，解决天猫魔盒 4K 网盘高规格音频无法解码发声的缺陷
         MPVLib.setOptionString("ao", "opensles");
         MPVLib.setOptionString("audio-channels", "stereo");
 
@@ -100,9 +100,30 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        if (headers != null && !headers.isEmpty()) {
+        this.mPath = path;
+        this.mHeaders = headers;
+        this.mFileStarted = false;
+    }
+
+    @Override
+    public void setDataSource(AssetFileDescriptor fd) {}
+
+    @Override
+    public void prepareAsync() {
+        mIsPreparing = true;
+        // 如果此时电视底层的 Surface 已经就绪，立即启动加载；否则静候 setSurface 回调
+        if (mSurface != null && mSurface.isValid() && mPath != null && !mFileStarted) {
+            startLoadInternal();
+        }
+    }
+
+    private void startLoadInternal() {
+        if (mPath == null || mFileStarted) return;
+        mFileStarted = true;
+
+        if (mHeaders != null && !mHeaders.isEmpty()) {
             StringBuilder headerSb = new StringBuilder();
-            for (Map.Entry<String, String> entry : headers.entrySet()) {
+            for (Map.Entry<String, String> entry : mHeaders.entrySet()) {
                 String key = entry.getKey();
                 String val = entry.getValue();
                 if (key != null && val != null) {
@@ -121,17 +142,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
             }
         }
         applyHdrToSdr();
-        mIsPreparing = true;
-        // 关键时序恢复：调用 setDataSource 时立即通知 MPV 开始拉流解析，不再等待 Surface 回调
-        MPVLib.command(new String[]{"loadfile", path, "replace"});
-    }
-
-    @Override
-    public void setDataSource(AssetFileDescriptor fd) {}
-
-    @Override
-    public void prepareAsync() {
-        mIsPreparing = true;
+        MPVLib.command(new String[]{"loadfile", mPath, "replace"});
     }
 
     @Override
@@ -149,7 +160,9 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         try {
             MPVLib.command(new String[]{"stop"});
         } catch (Throwable ignored) {}
+        mPath = null;
         mIsPreparing = false;
+        mFileStarted = false;
     }
 
     @Override
@@ -199,6 +212,10 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         this.mSurface = surface;
         if (surface != null && surface.isValid()) {
             MPVLib.attachSurface(surface);
+            // 核心机制：当 Surface 就绪且处于待准备状态时，正式启动 loadfile
+            if (mIsPreparing && mPath != null && !mFileStarted) {
+                startLoadInternal();
+            }
         } else {
             try {
                 MPVLib.detachSurface();
@@ -245,7 +262,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         return 0;
     }
 
-    // 必须实现的 EventObserver 属性监听方法（空实现即可），防止 JNI 报 NoSuchMethodError
     @Override public void eventProperty(String property) {}
     @Override public void eventProperty(String property, long value) {}
     @Override public void eventProperty(String property, boolean value) {}
@@ -276,7 +292,12 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                 @Override
                 public void run() {
                     if (mPlayerEventListener != null) {
-                        mPlayerEventListener.onCompletion();
+                        // 确保只有真正起播后自然播放完毕才回调 completion，避免起播加载期间的异常中断导致误退出
+                        if (mFileStarted && !mIsPreparing) {
+                            mPlayerEventListener.onCompletion();
+                        } else if (mIsPreparing) {
+                            mPlayerEventListener.onError();
+                        }
                     }
                 }
             });
