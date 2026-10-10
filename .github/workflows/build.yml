@@ -1,0 +1,58 @@
+name: Build TVBox With MPV
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_flavor:
+        description: '选择构建版本'
+        required: true
+        default: 'assembleRelease'
+        type: choice
+        options:
+          - assembleRelease          # 构建全部版本 (通用双架构版、32位版、64位版)
+          - assemblePython32Release  # 仅构建 32位版 (推荐：体积小，兼顾绝大多数电视机顶盒)
+          - assemblePython64Release  # 仅构建 64位版 (适用于高性能盒子或纯64位固件设备)
+          - assemblePythonRelease    # 仅构建 双架构通用版 (含32位与64位)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      # 从预编译包中提取官方经过完整编译优化的 libmpv.so 动态链接库
+      - name: Setup MPV Native Libraries
+        run: |
+          mkdir -p player/src/main/jniLibs/armeabi-v7a
+          mkdir -p player/src/main/jniLibs/arm64-v8a
+          curl -L -o mpv-prebuilt.apk https://github.com/mpv-android/mpv-android/releases/download/v2024-03-10/mpv-android-2024-03-10.apk
+          unzip -o -j mpv-prebuilt.apk "lib/armeabi-v7a/*.so" -d player/src/main/jniLibs/armeabi-v7a/
+          unzip -o -j mpv-prebuilt.apk "lib/arm64-v8a/*.so" -d player/src/main/jniLibs/arm64-v8a/
+          rm -f mpv-prebuilt.apk
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Build APK with Gradle
+        run: ./gradlew ${{ inputs.build_flavor }} --stacktrace
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TVBox-MPV-Release
+          path: app/build/outputs/apk/*/*/*.apk
