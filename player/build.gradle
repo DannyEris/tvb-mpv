@@ -8,23 +8,19 @@ android {
     defaultConfig {
         minSdkVersion 19
         targetSdkVersion 28
-
-        // 严格锁定 32 位架构，天猫魔盒 M19 (S912/API 22) 必须保持单架构，避免 64 位查找缺失库崩溃
-        ndk {
-            abiFilters 'armeabi-v7a'
-        }
     }
 
     buildTypes {
         debug {
             ndk {
-                abiFilters 'armeabi-v7a'
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
             }
         }
         release {
             minifyEnabled false
             ndk {
-                abiFilters 'armeabi-v7a'
+                //noinspection ChromeOsAbiSupport
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
             }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -35,7 +31,6 @@ android {
             }
         }
     }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -51,8 +46,6 @@ android {
 dependencies {
     implementation "androidx.annotation:annotation:1.3.0"
     implementation "com.squareup.okhttp3:okhttp:3.12.11"
-
-    // ExoPlayer 2.19.1
     api "com.google.android.exoplayer:exoplayer-core:2.19.1"
     api "org.jellyfin.exoplayer:exoplayer-ffmpeg-extension:2.19.1+1"
     api "com.google.android.exoplayer:exoplayer-ui:2.19.1"
@@ -61,17 +54,10 @@ dependencies {
     api "com.google.android.exoplayer:exoplayer-rtsp:2.19.1"
     api "com.google.android.exoplayer:exoplayer-datasource:2.19.1"
     api "com.google.android.exoplayer:extension-rtmp:2.19.1"
-    // 【新增】：补齐 IJK 核心动态链接库，排除重复的 Java 类定义避免 R8 报错
+    api 'xyz.doikki.android.dkplayer:dkplayer-ui:3.3.5'
+
+    // 仅引入 32 位 IJK 动态库（最低支持 API 9，完美适配 API 19，排除重复类声明避免 R8 报错）
     api('tv.danmaku.ijk.media:ijkplayer-armv7a:0.8.8') {
         exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
     }
-    api('tv.danmaku.ijk.media:ijkplayer-arm64:0.8.8') {
-        exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
-    }
-
-    // IJKPlayer 官方 Java 接口层
-    api 'tv.danmaku.ijk.media:ijkplayer-java:0.8.8'
-
-    // UI 库
-    api 'xyz.doikki.android.dkplayer:dkplayer-ui:3.3.5'
 }
