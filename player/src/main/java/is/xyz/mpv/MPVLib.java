@@ -6,16 +6,26 @@ import android.view.Surface;
 public class MPVLib {
 
     static {
-        // 仅加载 MPV 自身与 JNI 桥接库，严禁手动加载 avcodec/avformat 等，避免污染 IJK 和 ExoPlayer
-        try {
-            System.loadLibrary("c++_shared");
-        } catch (Throwable ignored) {}
-        try {
-            System.loadLibrary("mpv");
-        } catch (Throwable ignored) {}
-        try {
-            System.loadLibrary("player");
-        } catch (Throwable ignored) {}
+        // 必须按依赖倒序加载完整库链，确保 Android 系统底层链接器能够解析所有符号
+        String[] libs = {
+            "c++_shared",
+            "avutil",
+            "swresample",
+            "avcodec",
+            "avformat",
+            "swscale",
+            "avfilter",
+            "avdevice",
+            "mpv",
+            "player"
+        };
+        for (String lib : libs) {
+            try {
+                System.loadLibrary(lib);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
     }
 
     public static class mpvEventId {
@@ -28,10 +38,26 @@ public class MPVLib {
         public static final int MPV_EVENT_START_FILE = 6;
         public static final int MPV_EVENT_END_FILE = 7;
         public static final int MPV_EVENT_FILE_LOADED = 8;
-        public static final int MPV_EVENT_PLAYBACK_RESTART = 22;
+        public static final int MPV_EVENT_TRACKS_CHANGED = 9;
+        public static final int MPV_EVENT_TRACK_SWITCHED = 10;
+        public static final int MPV_EVENT_IDLE = 11;
+        public static final int MPV_EVENT_PAUSE = 12;
+        public static final int MPV_EVENT_UNPAUSE = 13;
+        public static final int MPV_EVENT_TICK = 14;
+        public static final int MPV_EVENT_VIDEO_RECONFIG = 17;
+        public static final int MPV_EVENT_AUDIO_RECONFIG = 18;
+        public static final int MPV_EVENT_SEEK = 20;
+        public static final int MPV_EVENT_PLAYBACK_RESTART = 21;
+        public static final int MPV_EVENT_PROPERTY_CHANGE = 22;
     }
 
+    // 严禁删减此接口方法，底层 libplayer.so JNI 初始化严格依赖这些方法签名
     public interface EventObserver {
+        void eventProperty(String property);
+        void eventProperty(String property, long value);
+        void eventProperty(String property, boolean value);
+        void eventProperty(String property, String value);
+        void eventProperty(String property, double value);
         void event(int eventId);
     }
 
