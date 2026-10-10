@@ -66,5 +66,7 @@ public class HawkConfig {
     public static final String DANMU_SIZE_SCALE = "danmu_size_scale";
     public static final String DANMU_RANDOM_COLOR = "danmu_random_color";
     public static final String DANMU_API = "danmu_api";
+    // 原有的配置常量附近增加：
+    public static final String MPV_HDR_TO_SDR = "mpv_hdr_to_sdr"; // 0: 自动, 1: 开启, 2: 关闭
     public static boolean hotVodDelete;
 }
