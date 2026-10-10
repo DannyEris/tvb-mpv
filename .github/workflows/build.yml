@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: '3.8'
 
-      # 通过 GitHub 官方 CLI 自动拉取 mpv-android 最新真实发布的 APK 并提取 Native 库
+      # 从预编译包中提取官方完整编译优化的 libmpv.so 动态链接库
       - name: Setup MPV Native Libraries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,6 +58,12 @@ jobs:
           ls -lh player/src/main/jniLibs/armeabi-v7a/libmpv.so
           echo "===> 验证提取结果 (arm64-v8a):"
           ls -lh player/src/main/jniLibs/arm64-v8a/libmpv.so
+
+      # 创建 local.properties 供 Chaquopy 插件读取，避免抛出 FileNotFoundException
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
