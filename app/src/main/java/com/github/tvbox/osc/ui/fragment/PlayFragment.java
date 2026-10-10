@@ -140,7 +140,7 @@ public class PlayFragment extends BaseLazyFragment {
     private static final int MSG_PARSE_TIMEOUT = 100;
     private static final int MSG_RESOLVE_PLAY_URL_TIMEOUT = 101;
     private static final int MSG_SWITCH_LINE_PLAY_TIMEOUT = 102;
-    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 30 * 1000L; // 放宽超时时间至30秒，给4K网盘充足的握手与解析时间
+    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 30 * 1000L;
     private static final long SWITCH_LINE_PLAY_TIMEOUT_MS = 20 * 1000L;
     private MyVideoView mVideoView;
     private TextView mPlayLoadTip;
@@ -164,6 +164,9 @@ public class PlayFragment extends BaseLazyFragment {
     private DanmuLoadController danmuLoadController;
     private final List<Cue> exoCues = new ArrayList<>();
     private boolean exoInternalSubtitle;
+
+    // 【新增核心保护锁】：切换播放器期间完全屏蔽销毁阶段的假错误，防止连环切源与退出
+    private volatile boolean isSwitchingPlayer = false;
 
     private final long videoDuration = -1;
 
@@ -252,6 +255,7 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     private void initView() {
+        EventBus.getDefault().register(this);
         mHandler = new Handler(new Handler.Callback() {
             @Override
             public boolean handleMessage(@NonNull Message msg) {
@@ -306,7 +310,12 @@ public class PlayFragment extends BaseLazyFragment {
         mVideoView.addOnStateChangeListener(new VideoView.SimpleOnStateChangeListener() {
             @Override
             public void onPlayStateChanged(int playState) {
+                if (isSwitchingPlayer && playState == VideoView.STATE_ERROR) {
+                    LOG.i("echo-ignore error state while switching player");
+                    return;
+                }
                 if (webPlayUrl != null && isStartedPlayState(playState)) {
+                    isSwitchingPlayer = false;
                     markPlaybackStarted();
                     hideTipOnUiThread();
                 }
@@ -401,6 +410,7 @@ public class PlayFragment extends BaseLazyFragment {
                 autoRetryCount = 0;
                 hasAutoSwitchedPlayer = false;
                 triedLineFlags.clear();
+                isSwitchingPlayer = true;
                 if (replay) {
                     play(true);
                 } else {
@@ -442,6 +452,7 @@ public class PlayFragment extends BaseLazyFragment {
 
             @Override
             public void prepared() {
+                isSwitchingPlayer = false;
                 initSubtitleView();
                 if (mVideoView != null) mVideoView.prepared();
                 startDanmuIfReady();
@@ -450,7 +461,7 @@ public class PlayFragment extends BaseLazyFragment {
             @Override
             public void startPlayUrl(String url, HashMap<String, String> headers) {
                 if (!TextUtils.isEmpty(m3u8SourceUrl) && !isM3u8ProxyUrl(url)) clearM3u8ProxyUrl();
-                // 关键点：切换内核或重换线路时，必须彻底释放旧播放器以保证 Surface 重建
+                isSwitchingPlayer = true;
                 if (mVideoView != null) {
                     mVideoView.release();
                 }
@@ -943,6 +954,11 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     void errorWithRetry(String err, boolean finish) {
+        // 核心保护：切换播放器期间绝不触发切源重试逻辑
+        if (isSwitchingPlayer) {
+            LOG.i("echo-ignore errorWithRetry while switching player");
+            return;
+        }
         if (isPlaybackStarted()) {
             cancelPlayTimeout();
             hideTipOnUiThread();
@@ -954,12 +970,7 @@ public class PlayFragment extends BaseLazyFragment {
             requireActivity().runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if (finish) {
-                        setTip(err, false, true);
-                        Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
-                    } else {
-                        setTip(err, false, true);
-                    }
+                    setTip(err, false, true);
                 }
             });
         }
@@ -991,7 +1002,6 @@ public class PlayFragment extends BaseLazyFragment {
         mController.playM3u8(url, headers);
     }
 
-    // 核心判定：确保 MPV (3)、IJK (1)、EXO (2) 正确映射识别
     private boolean isSamePlayerType(AbstractPlayer player, int targetType) {
         if (player == null) return false;
         if (targetType == 1 && player instanceof IjkMediaPlayer) return true;
@@ -1018,7 +1028,6 @@ public class PlayFragment extends BaseLazyFragment {
                     if (finalUrl != null) {
                         String url = finalUrl;
                         int playerType = mVodPlayerCfg.optInt("pl", 2);
-                        // 只有等于或大于 10 的才是第三方外部播放器
                         if (playerType >= 10) {
                             mVideoView.release();
                             VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
@@ -1036,11 +1045,12 @@ public class PlayFragment extends BaseLazyFragment {
                                 || url.contains(".mpd") || url.contains("type=mpd");
                         int targetPlayerType = forceExoPlayer ? 2 : playerType;
 
-                        // 关键修复：当内核类型不同时彻底释放重建，杜绝错误复用导致崩溃和退回主页
                         boolean samePlayer = isSamePlayerType(mVideoView.getMediaPlayer(), targetPlayerType);
                         boolean reusePlayer = samePlayer && !forceExoPlayer && mVideoView.getMediaPlayer() != null;
 
+                        // 关键改动：内核不匹配时加锁并释放旧播放器，绝不让旧播放器的释放过程影响新播放器的启动
                         if (!reusePlayer) {
+                            isSwitchingPlayer = true;
                             hideTip();
                             if (mVideoView.getMediaPlayer() != null) {
                                 mVideoView.release();
@@ -1078,7 +1088,7 @@ public class PlayFragment extends BaseLazyFragment {
         });
     }
 
-    // ===== 第 1 部分结束 =====
+    // ===== 第 1 部分结束，请回复“继续”获取第 2 部分 =====
 private String attachProxySiteKey(String url) {
         if (TextUtils.isEmpty(url) || TextUtils.isEmpty(sourceKey)) return url;
         if (!url.startsWith(ControlManager.get().getAddress(true) + "proxy?")) return url;
@@ -1263,7 +1273,7 @@ private String attachProxySiteKey(String url) {
                         String flag = info.optString("flag");
                         Object rawUrl = info.opt("url");
                         
-                        // 针对4K网盘慢速解析与爬虫偶发返回null字符串的防御拦截
+                        // 针对4K网盘慢速解析与爬虫偶发返回null对象的防御拦截
                         if (rawUrl == null || JSONObject.NULL.equals(rawUrl) || "null".equalsIgnoreCase(String.valueOf(rawUrl).trim())) {
                             handleResolvePlayUrlFailed("获取播放地址为空");
                             return;
@@ -1629,7 +1639,7 @@ private String attachProxySiteKey(String url) {
         } else {
             mVodInfo.playIndex++;
         }
-        reusePlayerOnSwitch = false; // 严防跨集假复用
+        reusePlayerOnSwitch = false;
         play(false);
     }
 
@@ -1646,7 +1656,7 @@ private String attachProxySiteKey(String url) {
             return;
         }
         mVodInfo.playIndex--;
-        reusePlayerOnSwitch = false; // 严防跨集假复用
+        reusePlayerOnSwitch = false;
         play(false);
     }
 
@@ -1679,7 +1689,7 @@ private String attachProxySiteKey(String url) {
                         || actualPosition >= episodes.size() || actualPosition == mVodInfo.playIndex) return;
                 triedLineFlags.clear();
                 mVodInfo.playIndex = actualPosition;
-                reusePlayerOnSwitch = false; // 选集时彻底重建
+                reusePlayerOnSwitch = false;
                 play(false);
             }
         });
@@ -1714,6 +1724,10 @@ private String attachProxySiteKey(String url) {
     }
 
     boolean autoRetry() {
+        if (isSwitchingPlayer) {
+            LOG.i("echo-autoRetry ignored because isSwitchingPlayer");
+            return false;
+        }
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastRetryTime > 60_000) {
             LOG.i("echo-reset-autoRetryCount");
@@ -1751,6 +1765,9 @@ private String attachProxySiteKey(String url) {
     }
 
     boolean tryNextLineIfEnabled() {
+        if (isSwitchingPlayer) {
+            return false;
+        }
         restoreAutoSwitchedPlayer();
         if (allowAutoSwitchLine && Hawk.get(HawkConfig.AUTO_SWITCH_LINE, true)) return tryNextLine();
         LOG.i("echo-autoRetry line switching disabled");
@@ -1762,6 +1779,9 @@ private String attachProxySiteKey(String url) {
     }
 
     boolean tryNextLine() {
+        if (isSwitchingPlayer) {
+            return false;
+        }
         if (mVodInfo == null || mVodInfo.seriesMap == null || mVodInfo.seriesMap.isEmpty()) {
             autoRetryCount = 0;
             triedLineFlags.clear();
@@ -1787,12 +1807,24 @@ private String attachProxySiteKey(String url) {
                 break;
             }
         }
+        
+        // 【核心防御】：若所有线路都已试完，绝对不退出到主页，停留在当前界面给出提示
         if (nextFlag == null) {
-            LOG.i("echo-autoRetry all lines exhausted");
+            LOG.i("echo-autoRetry all lines exhausted, staying on current play fragment");
             triedLineFlags.clear();
             autoRetryCount = 0;
-            return requestDetailFallbackAfterLinesExhausted();
+            stopMusicSessionForFailedPlayback();
+            if (isAdded()) {
+                requireActivity().runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        setTip("当前片源所有线路尝试完毕，请手动换线或更换播放器", false, true);
+                    }
+                });
+            }
+            return false; // 返回 false，彻底阻止 requestDetailFallbackAfterLinesExhausted() 杀掉页面
         }
+
         final String flagToSwitch = nextFlag;
         final String preProgressKey = progressKey;
         final long savedProgress = TextUtils.isEmpty(preProgressKey) ? 0 : getSavedProgress(preProgressKey);
@@ -1813,17 +1845,14 @@ private String attachProxySiteKey(String url) {
         hasAutoSwitchedPlayer = false;
         inheritProgressKey = preProgressKey;
         inheritProgress = preProgress;
-        reusePlayerOnSwitch = false; // 切线时彻底重建
+        reusePlayerOnSwitch = false;
         play(false);
         return true;
     }
 
     private boolean requestDetailFallbackAfterLinesExhausted() {
-        Activity activity = getActivity();
-        if (!(activity instanceof DetailActivity)) {
-            return false;
-        }
-        return ((DetailActivity) activity).startDetailFallbackAfterLinesExhausted();
+        // 彻底切断退回主页链路
+        return false;
     }
 
     private List<String> getLineFlagsInDisplayOrder() {
@@ -2924,6 +2953,7 @@ private String attachProxySiteKey(String url) {
                         stopLoadWebView(false);
                         SuperParse.stopJsonJx();
                         mHandler.removeMessages(MSG_PARSE_TIMEOUT);
+                        url = loadFoundVideoUrls.poll();
                         String cookie = CookieManager.getInstance().getCookie(url);
                         if (!TextUtils.isEmpty(cookie)) headers.put("Cookie", " " + cookie);
                         playUrl(url, headers);
