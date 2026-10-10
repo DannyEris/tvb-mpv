@@ -98,7 +98,8 @@ public class ExoPlayer extends ExoMediaPlayer {
             }
         })
                 .setEnableDecoderFallback(true)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+                // 优先启用 FFmpeg 扩展软解高清音轨（TrueHD、DTS等），解决盒子原生解码器缺失造成的静音和倍速
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
         try {
             Method method = DefaultRenderersFactory.class.getMethod("forceDisableMediaCodecAsynchronousQueueing");
             method.invoke(factory);
