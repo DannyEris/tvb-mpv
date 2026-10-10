@@ -34,15 +34,30 @@ jobs:
         with:
           python-version: '3.8'
 
-      # 从预编译包中提取官方完整编译优化的 libmpv.so 动态链接库
+      # 通过 GitHub 官方 CLI 自动拉取 mpv-android 最新真实发布的 APK 并提取 Native 库
       - name: Setup MPV Native Libraries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p player/src/main/jniLibs/armeabi-v7a
           mkdir -p player/src/main/jniLibs/arm64-v8a
-          curl -L -o mpv-prebuilt.apk https://github.com/mpv-android/mpv-android/releases/download/v2024-03-10/mpv-android-2024-03-10.apk
-          unzip -o -j mpv-prebuilt.apk "lib/armeabi-v7a/*.so" -d player/src/main/jniLibs/armeabi-v7a/
-          unzip -o -j mpv-prebuilt.apk "lib/arm64-v8a/*.so" -d player/src/main/jniLibs/arm64-v8a/
-          rm -f mpv-prebuilt.apk
+          mkdir -p ./mpv_temp
+
+          echo "===> 正在拉取 mpv-android 最新发布包..."
+          gh release download -R mpv-android/mpv-android --pattern "*.apk" --dir ./mpv_temp
+
+          echo "===> 正在解压 Native 动态库..."
+          for apk in ./mpv_temp/*.apk; do
+            echo "处理安装包: $apk"
+            unzip -o -j "$apk" "lib/armeabi-v7a/*.so" -d player/src/main/jniLibs/armeabi-v7a/ 2>/dev/null || true
+            unzip -o -j "$apk" "lib/arm64-v8a/*.so" -d player/src/main/jniLibs/arm64-v8a/ 2>/dev/null || true
+          done
+          rm -rf ./mpv_temp
+
+          echo "===> 验证提取结果 (armeabi-v7a):"
+          ls -lh player/src/main/jniLibs/armeabi-v7a/libmpv.so
+          echo "===> 验证提取结果 (arm64-v8a):"
+          ls -lh player/src/main/jniLibs/arm64-v8a/libmpv.so
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
