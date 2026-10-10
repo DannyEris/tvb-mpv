@@ -17,6 +17,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SKIP_JDK_VERSION_CHECK: 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,15 +29,12 @@ jobs:
           distribution: 'zulu'
           java-version: '11'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
-      # 从预编译包中提取官方经过完整编译优化的 libmpv.so 动态链接库
+      # 从预编译包中提取官方完整编译优化的 libmpv.so 动态链接库
       - name: Setup MPV Native Libraries
         run: |
           mkdir -p player/src/main/jniLibs/armeabi-v7a
