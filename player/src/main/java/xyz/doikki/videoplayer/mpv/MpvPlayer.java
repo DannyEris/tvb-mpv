@@ -175,7 +175,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setPropertyString("loop", isLooping ? "inf" : "no");
     }
 
-    @Override
     public boolean isLooping() {
         return "inf".equals(MPVLib.getPropertyString("loop"));
     }
@@ -189,6 +188,11 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     public float getSpeed() {
         Double speed = MPVLib.getPropertyDouble("speed");
         return speed == null ? 1.0f : speed.floatValue();
+    }
+
+    @Override
+    public long getTcpSpeed() {
+        return 0;
     }
 
     @Override
