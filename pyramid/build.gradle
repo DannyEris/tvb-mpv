@@ -10,7 +10,12 @@ android {
         minSdkVersion 19
         targetSdkVersion 28
         python {
-            buildPython("D:/Programs/Python/Python38/python.exe")
+            // 自动适配：云端 Linux 使用 python3，本地 Windows 兼容处理
+            if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+                buildPython "python"
+            } else {
+                buildPython "python3"
+            }
             pip {
                 install "lxml"
                 install "ujson"
