@@ -57,6 +57,11 @@ public class PlayerHelper {
             playerType = forcePlayerType;
         }
 
+        // 关键防护：MPV 播放器在电视盒子上必须使用 SurfaceView，绝对不可使用 TextureView
+        if (playerType == 3) {
+            renderType = 1;
+        }
+
         IJKCode codec = ApiConfig.get().getIJKCodec(ijkCode);
         PlayerFactory playerFactory;
         if (playerType == 1) {
@@ -91,12 +96,12 @@ public class PlayerHelper {
 
         RenderViewFactory renderViewFactory = null;
         switch (renderType) {
+            case 1:
+                renderViewFactory = SurfaceRenderViewFactory.create();
+                break;
             case 0:
             default:
                 renderViewFactory = TextureRenderViewFactory.create();
-                break;
-            case 1:
-                renderViewFactory = SurfaceRenderViewFactory.create();
                 break;
         }
         if (videoView != null) {
