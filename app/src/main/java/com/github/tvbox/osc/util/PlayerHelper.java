@@ -36,19 +36,26 @@ public class PlayerHelper {
     }
 
     public static void updateCfg(VideoView videoView, JSONObject playerCfg, int forcePlayerType) {
+        // 优先以全局设置的播放器为准，避免历史失效记录死锁
         int playerType = Hawk.get(HawkConfig.PLAY_TYPE, 2);
         int renderType = Hawk.get(HawkConfig.PLAY_RENDER, 0);
         String ijkCode = Hawk.get(HawkConfig.IJK_CODEC, "硬解码");
         int scale = Hawk.get(HawkConfig.PLAY_SCALE, 0);
-        try {
-            playerType = playerCfg.getInt("pl");
-            renderType = playerCfg.getInt("pr");
-            ijkCode = playerCfg.getString("ijk");
-            scale = playerCfg.getInt("sc");
-        } catch (JSONException e) {
-            e.printStackTrace();
+
+        if (playerCfg != null) {
+            try {
+                renderType = playerCfg.optInt("pr", renderType);
+                ijkCode = playerCfg.optString("ijk", ijkCode);
+                scale = playerCfg.optInt("sc", scale);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-        if (forcePlayerType >= 0) playerType = forcePlayerType;
+        // 如果播放选单显式指定了播放器内核，则使用指定的
+        if (forcePlayerType >= 0) {
+            playerType = forcePlayerType;
+        }
+
         IJKCode codec = ApiConfig.get().getIJKCodec(ijkCode);
         PlayerFactory playerFactory;
         if (playerType == 1) {
@@ -75,7 +82,6 @@ public class PlayerHelper {
         } else if (playerType == 2) {
             playerFactory = ExoMediaPlayerFactory.create();
         } else if (playerType == 3) {
-            // 新增 MPV 播放器内核分发：读取 HDR to SDR 选项 (0:自动, 1:开启, 2:关闭)
             int hdrMode = Hawk.get(HawkConfig.MPV_HDR_TO_SDR, 0);
             playerFactory = MpvPlayerFactory.create(hdrMode);
         } else {
@@ -100,51 +106,7 @@ public class PlayerHelper {
     }
 
     public static void updateCfg(VideoView videoView) {
-        int playType = Hawk.get(HawkConfig.PLAY_TYPE, 2);
-        PlayerFactory playerFactory;
-        if (playType == 1) {
-            playerFactory = new PlayerFactory<IjkMediaPlayer>() {
-                @Override
-                public IjkMediaPlayer createPlayer(Context context) {
-                    return new IjkMediaPlayer(context, null);
-                }
-            };
-            try {
-                tv.danmaku.ijk.media.player.IjkMediaPlayer.loadLibrariesOnce(new IjkLibLoader() {
-                    @Override
-                    public void loadLibrary(String s) throws UnsatisfiedLinkError, SecurityException {
-                        try {
-                            System.loadLibrary(s);
-                        } catch (Throwable th) {
-                            th.printStackTrace();
-                        }
-                    }
-                });
-            } catch (Throwable th) {
-                th.printStackTrace();
-            }
-        } else if (playType == 2) {
-            playerFactory = ExoMediaPlayerFactory.create();
-        } else if (playType == 3) {
-            // 新增 MPV 播放器内核分发
-            int hdrMode = Hawk.get(HawkConfig.MPV_HDR_TO_SDR, 0);
-            playerFactory = MpvPlayerFactory.create(hdrMode);
-        } else {
-            playerFactory = ExoMediaPlayerFactory.create();
-        }
-        int renderType = Hawk.get(HawkConfig.PLAY_RENDER, 0);
-        RenderViewFactory renderViewFactory = null;
-        switch (renderType) {
-            case 0:
-            default:
-                renderViewFactory = TextureRenderViewFactory.create();
-                break;
-            case 1:
-                renderViewFactory = SurfaceRenderViewFactory.create();
-                break;
-        }
-        videoView.setPlayerFactory(playerFactory);
-        videoView.setRenderViewFactory(renderViewFactory);
+        updateCfg(videoView, null, -1);
     }
 
     public static void init() {
@@ -179,7 +141,7 @@ public class PlayerHelper {
             LinkedHashMap<Integer, String> playersInfo = new LinkedHashMap<>();
             playersInfo.put(2, "EXO播放器");
             playersInfo.put(1, "IJK播放器");
-            playersInfo.put(3, "MPV播放器"); // 新增 MPV 播放器注册
+            playersInfo.put(3, "MPV播放器");
             playersInfo.put(10, "MX播放器");
             playersInfo.put(11, "Reex播放器");
             playersInfo.put(12, "Kodi播放器");
@@ -196,7 +158,7 @@ public class PlayerHelper {
             LinkedHashMap<Integer, Boolean> playersExist = new LinkedHashMap<>();
             playersExist.put(2, true);
             playersExist.put(1, true);
-            playersExist.put(3, true); // 开启 MPV 存在标识
+            playersExist.put(3, true);
             playersExist.put(10, MXPlayer.getPackageInfo() != null);
             playersExist.put(11, ReexPlayer.getPackageInfo() != null);
             playersExist.put(12, Kodi.getPackageInfo() != null);
@@ -234,26 +196,21 @@ public class PlayerHelper {
     public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers, long progress) {
         boolean callResult = false;
         switch (playerType) {
-            case 10: {
+            case 10:
                 callResult = MXPlayer.run(activity, url, title, subtitle, headers);
                 break;
-            }
-            case 11: {
+            case 11:
                 callResult = ReexPlayer.run(activity, url, title, subtitle, headers);
                 break;
-            }
-            case 12: {
+            case 12:
                 callResult = Kodi.run(activity, url, title, subtitle, headers);
                 break;
-            }
-            case 13: {
+            case 13:
                 callResult = RemoteTVBox.run(activity, url, title, subtitle, headers);
                 break;
-            }
-            case 14: {
+            case 14:
                 callResult = VlcPlayer.run(activity, url, title, subtitle, progress);
                 break;
-            }
         }
         return callResult;
     }
