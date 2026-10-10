@@ -140,7 +140,7 @@ public class PlayFragment extends BaseLazyFragment {
     private static final int MSG_PARSE_TIMEOUT = 100;
     private static final int MSG_RESOLVE_PLAY_URL_TIMEOUT = 101;
     private static final int MSG_SWITCH_LINE_PLAY_TIMEOUT = 102;
-    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 30 * 1000L; // 针对4K网盘慢速解析，放宽至30秒
+    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 30 * 1000L; // 放宽超时时间至30秒，给4K网盘充足的握手与解析时间
     private static final long SWITCH_LINE_PLAY_TIMEOUT_MS = 20 * 1000L;
     private MyVideoView mVideoView;
     private TextView mPlayLoadTip;
@@ -252,7 +252,6 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     private void initView() {
-        EventBus.getDefault().register(this);
         mHandler = new Handler(new Handler.Callback() {
             @Override
             public boolean handleMessage(@NonNull Message msg) {
@@ -451,7 +450,7 @@ public class PlayFragment extends BaseLazyFragment {
             @Override
             public void startPlayUrl(String url, HashMap<String, String> headers) {
                 if (!TextUtils.isEmpty(m3u8SourceUrl) && !isM3u8ProxyUrl(url)) clearM3u8ProxyUrl();
-                // 关键重构：在菜单手动选择新播放器或换线时，强行 release 彻底释放底层管道
+                // 关键点：切换内核或重换线路时，必须彻底释放旧播放器以保证 Surface 重建
                 if (mVideoView != null) {
                     mVideoView.release();
                 }
@@ -992,7 +991,7 @@ public class PlayFragment extends BaseLazyFragment {
         mController.playM3u8(url, headers);
     }
 
-    // 核心内核判断：将 MPV (3) 与 IJK (1)、EXO (2) 并列为内置核心播放器
+    // 核心判定：确保 MPV (3)、IJK (1)、EXO (2) 正确映射识别
     private boolean isSamePlayerType(AbstractPlayer player, int targetType) {
         if (player == null) return false;
         if (targetType == 1 && player instanceof IjkMediaPlayer) return true;
@@ -1019,7 +1018,7 @@ public class PlayFragment extends BaseLazyFragment {
                     if (finalUrl != null) {
                         String url = finalUrl;
                         int playerType = mVodPlayerCfg.optInt("pl", 2);
-                        // 10 及以上才为第三方外部播放器
+                        // 只有等于或大于 10 的才是第三方外部播放器
                         if (playerType >= 10) {
                             mVideoView.release();
                             VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
@@ -1079,7 +1078,7 @@ public class PlayFragment extends BaseLazyFragment {
         });
     }
 
-    // ===== 第 1 部分结束，请回复“继续”获取第 2 部分 =====
+    // ===== 第 1 部分结束 =====
 private String attachProxySiteKey(String url) {
         if (TextUtils.isEmpty(url) || TextUtils.isEmpty(sourceKey)) return url;
         if (!url.startsWith(ControlManager.get().getAddress(true) + "proxy?")) return url;
@@ -1630,7 +1629,7 @@ private String attachProxySiteKey(String url) {
         } else {
             mVodInfo.playIndex++;
         }
-        reusePlayerOnSwitch = false; // 严防假复用
+        reusePlayerOnSwitch = false; // 严防跨集假复用
         play(false);
     }
 
@@ -1647,7 +1646,7 @@ private String attachProxySiteKey(String url) {
             return;
         }
         mVodInfo.playIndex--;
-        reusePlayerOnSwitch = false; // 严防假复用
+        reusePlayerOnSwitch = false; // 严防跨集假复用
         play(false);
     }
 
@@ -1680,7 +1679,7 @@ private String attachProxySiteKey(String url) {
                         || actualPosition >= episodes.size() || actualPosition == mVodInfo.playIndex) return;
                 triedLineFlags.clear();
                 mVodInfo.playIndex = actualPosition;
-                reusePlayerOnSwitch = false; // 彻底重置播放器
+                reusePlayerOnSwitch = false; // 选集时彻底重建
                 play(false);
             }
         });
@@ -1814,7 +1813,7 @@ private String attachProxySiteKey(String url) {
         hasAutoSwitchedPlayer = false;
         inheritProgressKey = preProgressKey;
         inheritProgress = preProgress;
-        reusePlayerOnSwitch = false; // 切线时确保彻底重建播放器
+        reusePlayerOnSwitch = false; // 切线时彻底重建
         play(false);
         return true;
     }
@@ -2924,7 +2923,6 @@ private String attachProxySiteKey(String url) {
                     if (loadFoundCount.incrementAndGet() == 1) {
                         stopLoadWebView(false);
                         SuperParse.stopJsonJx();
-                        url = loadFoundVideoUrls.poll();
                         mHandler.removeMessages(MSG_PARSE_TIMEOUT);
                         String cookie = CookieManager.getInstance().getCookie(url);
                         if (!TextUtils.isEmpty(cookie)) headers.put("Cookie", " " + cookie);
