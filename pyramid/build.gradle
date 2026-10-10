@@ -5,13 +5,12 @@ plugins {
 
 android {
     compileSdk 33
-
     defaultConfig {
         minSdkVersion 19
         targetSdkVersion 28
         python {
-            // 自动适配：云端 Linux 使用 python3，本地 Windows 兼容处理
-            if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            // 自动适配：在 Linux 云端使用系统 python3，本地 Windows 使用 python
+            if (System.getProperty("os.name").toLowerCase().contains("windows")) {
                 buildPython "python"
             } else {
                 buildPython "python3"
@@ -28,7 +27,6 @@ android {
             }
         }
     }
-
     flavorDimensions "mode"
     productFlavors {
         python {
@@ -50,7 +48,6 @@ android {
             }
         }
     }
-
     buildTypes {
         debug {
         }
@@ -63,12 +60,11 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-
     sourceSets {
         main{
-            // Android代码模块
+            // Android
             setRoot "src/main"
-            // Python代码模块，也就是你的Python源码所在项目中的文件夹
+            // Python
             python.srcDirs = ["src/python"]
         }
     }
@@ -76,5 +72,4 @@ android {
 }
 
 dependencies {
-
 }
