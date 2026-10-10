@@ -35,7 +35,12 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("hwdec", "mediacodec,auto");
         MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 算力
         MPVLib.setOptionString("force-window", "yes");
-        MPVLib.setOptionString("pause", "yes"); // 初始暂停等待缓冲
+        MPVLib.setOptionString("pause", "yes");
+        // 关键配置：解决电视老旧系统访问网盘 HTTPS 握手失败及避免内存溢出
+        MPVLib.setOptionString("tls-verify", "no");
+        MPVLib.setOptionString("ytdl", "no");
+        MPVLib.setOptionString("demuxer-max-bytes", "32MiB");
+        MPVLib.setOptionString("demuxer-max-back-bytes", "16MiB");
         MPVLib.init();
         MPVLib.addObserver(this);
     }
@@ -85,7 +90,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        // 关键修复：传递防盗链 Headers 给 MPV
+        // 关键修复：MPV 初始化后必须使用 setPropertyString 注入网盘防盗链 Headers
         if (headers != null && !headers.isEmpty()) {
             StringBuilder headerSb = new StringBuilder();
             for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -93,16 +98,17 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                 String val = entry.getValue();
                 if (key != null && val != null) {
                     if (key.equalsIgnoreCase("user-agent")) {
-                        MPVLib.setOptionString("user-agent", val);
+                        MPVLib.setPropertyString("user-agent", val);
                     } else if (key.equalsIgnoreCase("referer")) {
-                        MPVLib.setOptionString("referrer", val);
+                        MPVLib.setPropertyString("referrer", val);
                     } else {
-                        headerSb.append(key).append(": ").append(val).append("\r\n");
+                        if (headerSb.length() > 0) headerSb.append(",");
+                        headerSb.append(key).append(": ").append(val);
                     }
                 }
             }
             if (headerSb.length() > 0) {
-                MPVLib.setOptionString("http-header-fields", headerSb.toString().trim());
+                MPVLib.setPropertyString("http-header-fields", headerSb.toString());
             }
         }
         applyHdrToSdr();
@@ -136,6 +142,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     @Override
     public void reset() {
         stop();
+        setSurface(null); // 解绑并释放 Surface 供后续播放器复用
     }
 
     @Override
@@ -150,6 +157,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void release() {
+        setSurface(null); // 释放画面绑定，防止污染其他播放器
         MPVLib.removeObserver(this);
         MPVLib.destroy();
     }
@@ -228,7 +236,13 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                     @Override
                     public void run() {
                         if (mPlayerEventListener != null) {
+                            Double w = MPVLib.getPropertyDouble("dwidth");
+                            Double h = MPVLib.getPropertyDouble("dheight");
+                            if (w != null && h != null && w > 0 && h > 0) {
+                                mPlayerEventListener.onVideoSizeChanged(w.intValue(), h.intValue());
+                            }
                             mPlayerEventListener.onPrepared();
+                            mPlayerEventListener.onInfo(AbstractPlayer.MEDIA_INFO_VIDEO_RENDERING_START, 0);
                         }
                     }
                 });
@@ -239,7 +253,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                 public void run() {
                     if (mPlayerEventListener != null) {
                         if (mIsPreparing) {
-                            // 准备阶段直接结束说明流媒体地址失效或加载失败
                             mPlayerEventListener.onError();
                         } else {
                             mPlayerEventListener.onCompletion();
