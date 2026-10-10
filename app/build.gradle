@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+configurations.all {
+    exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
+}
+
 android {
     compileSdkVersion 33
 
@@ -9,7 +13,7 @@ android {
         versionCode 1
         versionName '20260924-2341'
         multiDexEnabled true
-        //设置room的Schema的位置
+        // 设置room的Schema的位置
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
@@ -20,6 +24,20 @@ android {
     packagingOptions {
         exclude 'META-INF/DEPENDENCIES'
         exclude 'META-INF/beans.xml'
+
+        // 解决 Native so 库重复合并冲突 (DuplicateRelativeFileException)
+        pickFirst '**/libijkffmpeg.so'
+        pickFirst '**/libijksdl.so'
+        pickFirst '**/libijkplayer.so'
+        pickFirst '**/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libijkffmpeg.so'
+        pickFirst 'lib/armeabi-v7a/libijkffmpeg.so'
+        pickFirst 'lib/arm64-v8a/libijksdl.so'
+        pickFirst 'lib/armeabi-v7a/libijksdl.so'
+        pickFirst 'lib/arm64-v8a/libijkplayer.so'
+        pickFirst 'lib/armeabi-v7a/libijkplayer.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
     }
 
     flavorDimensions "mode"
@@ -108,14 +126,13 @@ android {
     // 禁用 ABI 分割
     splits {
         abi {
-            enable false // 禁用 ABI 分割
+            enable false
         }
     }
 
     applicationVariants.configureEach { variant ->
         variant.outputs.configureEach { output ->
             def flavorNames = variant.productFlavors.collect { it.name }.join('-')
-            // 构建自定义文件名
             def fileName = "TVBox_${variant.buildType.name}-${flavorNames}.apk"
             outputFileName = fileName
         }
@@ -130,22 +147,14 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
-//    dexOptions {
-//        javaMaxHeapSize "4g"
-//        additionalParameters += '--multi-dex'
-//        additionalParameters += '--set-max-idx-number=48000'
-//        additionalParameters += '--minimal-main-dex'
-//    }
-    configurations.all {
-        exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
-        }
 }
 
 repositories {
 
 }
+
 dependencies {
-    api fileTree(dir: "libs", include: ["*.jar","*.aar"])
+    api fileTree(dir: "libs", include: ["*.jar", "*.aar"])
 
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'org.fourthline.cling:cling-core:2.1.2'
@@ -160,9 +169,6 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
     implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
     implementation 'androidx.recyclerview:recyclerview:1.2.1'
-//    implementation files('libs/thunder.jar')
-//    implementation files('libs/commons-lang3-3.12.0.jar')
-
 
     implementation 'com.squareup.okhttp3:okhttp:3.12.11'
     annotationProcessor 'androidx.room:room-compiler:2.3.0'
@@ -189,9 +195,7 @@ dependencies {
     python32Implementation project(":pyramid")
     python64Implementation project(":pyramid")
 
-
     implementation 'com.lzy.net:okgo:3.0.4'
-    // implementation 'com.tencent.bugly:crashreport_upgrade:latest.release'
     implementation 'com.owen:tv-recyclerview:3.0.0'
 
     implementation 'com.github.getActivity:XXPermissions:13.6'
@@ -199,13 +203,7 @@ dependencies {
     implementation 'com.github.hedzr:android-file-chooser:v1.2.0-final'
     implementation 'commons-io:commons-io:2.11.0'
     implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3'
-    //支持http3
     implementation ('com.google.net.cronet:cronet-okhttp:0.1.0')
-//    implementation 'com.google.android.gms:play-services-cronet:18.0.1'
     implementation ('org.chromium.net:cronet-embedded:101.4951.41')
     implementation 'org.brotli:dec:0.1.2'
-    configurations.all {
-    exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
 }
-}
-
