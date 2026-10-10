@@ -136,6 +136,9 @@ android {
 //        additionalParameters += '--set-max-idx-number=48000'
 //        additionalParameters += '--minimal-main-dex'
 //    }
+    configurations.all {
+    exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
+}
 }
 
 repositories {
