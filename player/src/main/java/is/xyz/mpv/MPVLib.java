@@ -6,12 +6,9 @@ import android.view.Surface;
 public class MPVLib {
 
     static {
-        // 仅加载主桥接库，让系统底层链接器通过 DT_NEEDED 自动处理私有依赖，严禁全局显式加载 avcodec 等
-        try {
-            System.loadLibrary("player");
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
+        try { System.loadLibrary("c++_shared"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("mpv"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("player"); } catch (Throwable t) { t.printStackTrace(); }
     }
 
     public static class mpvEventId {
@@ -37,7 +34,6 @@ public class MPVLib {
         public static final int MPV_EVENT_PROPERTY_CHANGE = 22;
     }
 
-    // 严禁删减这 5 个属性观察方法签名，C 库 JNI 初始化严格依赖这些方法
     public interface EventObserver {
         void eventProperty(String property);
         void eventProperty(String property, long value);
