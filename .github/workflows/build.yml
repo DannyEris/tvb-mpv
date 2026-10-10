@@ -34,8 +34,8 @@ jobs:
         with:
           python-version: '3.8'
 
-      # 从预编译包中提取官方完整编译优化的 libmpv.so 动态链接库
-      - name: Setup MPV Native Libraries
+      # 从预编译包中提取官方完整编译优化的 libmpv.so 以及 补齐缺失的 IJK 核心运行库
+      - name: Setup MPV & IJK Native Libraries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -46,12 +46,21 @@ jobs:
           echo "===> 正在拉取 mpv-android 最新发布包..."
           gh release download -R mpv-android/mpv-android --pattern "*.apk" --dir ./mpv_temp
 
-          echo "===> 正在解压 Native 动态库..."
+          echo "===> 正在解压 MPV Native 动态库..."
           for apk in ./mpv_temp/*.apk; do
             unzip -o -j "$apk" "lib/armeabi-v7a/*.so" -d player/src/main/jniLibs/armeabi-v7a/ 2>/dev/null || true
             unzip -o -j "$apk" "lib/arm64-v8a/*.so" -d player/src/main/jniLibs/arm64-v8a/ 2>/dev/null || true
           done
           rm -rf ./mpv_temp
+
+          echo "===> 正在安全补齐缺失的 IJK 核心运行库 libijkplayer.so (不引入外部Jar)..."
+          curl -L -s -o ./ijk_v7a.aar "https://repo1.maven.org/maven2/tv/danmaku/ijk/media/ijkplayer-armv7a/0.8.8/ijkplayer-armv7a-0.8.8.aar"
+          unzip -o -j ./ijk_v7a.aar "jni/armeabi-v7a/libijkplayer.so" -d player/src/main/jniLibs/armeabi-v7a/ 2>/dev/null || true
+          rm -f ./ijk_v7a.aar
+
+          curl -L -s -o ./ijk_v8a.aar "https://repo1.maven.org/maven2/tv/danmaku/ijk/media/ijkplayer-arm64/0.8.8/ijkplayer-arm64-0.8.8.aar"
+          unzip -o -j ./ijk_v8a.aar "jni/arm64-v8a/libijkplayer.so" -d player/src/main/jniLibs/arm64-v8a/ 2>/dev/null || true
+          rm -f ./ijk_v8a.aar
 
       # 创建 local.properties 供 Chaquopy 插件读取
       - name: Create local.properties
