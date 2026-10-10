@@ -36,7 +36,6 @@ public class PlayerHelper {
     }
 
     public static void updateCfg(VideoView videoView, JSONObject playerCfg, int forcePlayerType) {
-        // 优先以全局设置的播放器为准，避免历史失效记录死锁
         int playerType = Hawk.get(HawkConfig.PLAY_TYPE, 2);
         int renderType = Hawk.get(HawkConfig.PLAY_RENDER, 0);
         String ijkCode = Hawk.get(HawkConfig.IJK_CODEC, "硬解码");
@@ -44,14 +43,16 @@ public class PlayerHelper {
 
         if (playerCfg != null) {
             try {
+                if (playerCfg.has("pl")) {
+                    playerType = playerCfg.getInt("pl");
+                }
                 renderType = playerCfg.optInt("pr", renderType);
                 ijkCode = playerCfg.optString("ijk", ijkCode);
                 scale = playerCfg.optInt("sc", scale);
-            } catch (Exception e) {
+            } catch (JSONException e) {
                 e.printStackTrace();
             }
         }
-        // 如果播放选单显式指定了播放器内核，则使用指定的
         if (forcePlayerType >= 0) {
             playerType = forcePlayerType;
         }
