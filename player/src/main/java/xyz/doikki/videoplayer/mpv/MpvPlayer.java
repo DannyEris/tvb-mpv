@@ -3,6 +3,8 @@ package xyz.doikki.videoplayer.mpv;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -16,6 +18,7 @@ import xyz.doikki.videoplayer.player.AbstractPlayer;
 public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     protected final Context mAppContext;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private boolean mIsPreparing = false;
     private int mHdrMode = 0; // 0: 自动, 1: 开启, 2: 关闭
 
@@ -33,6 +36,11 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 算力
         MPVLib.init();
         MPVLib.addObserver(this);
+    }
+
+    @Override
+    public void setOptions() {
+        // 实现 AbstractPlayer 的抽象方法
     }
 
     public void setHdrToSdrMode(int mode) {
@@ -184,18 +192,26 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     }
 
     @Override
-    public long getTcpSpeed() {
-        return 0;
-    }
-
-    @Override
     public void event(int eventId) {
         if (eventId == MPVLib.mpvEventId.MPV_EVENT_PLAYBACK_RESTART && mIsPreparing) {
             mIsPreparing = false;
-            setPlayerState(STATE_PREPARED);
-            setPlayerState(STATE_PLAYING);
+            mMainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (mPlayerEventListener != null) {
+                        mPlayerEventListener.onPrepared();
+                    }
+                }
+            });
         } else if (eventId == MPVLib.mpvEventId.MPV_EVENT_END_FILE) {
-            setPlayerState(STATE_PLAYBACK_COMPLETED);
+            mMainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (mPlayerEventListener != null) {
+                        mPlayerEventListener.onCompletion();
+                    }
+                }
+            });
         }
     }
 }
