@@ -140,7 +140,7 @@ public class PlayFragment extends BaseLazyFragment {
     private static final int MSG_PARSE_TIMEOUT = 100;
     private static final int MSG_RESOLVE_PLAY_URL_TIMEOUT = 101;
     private static final int MSG_SWITCH_LINE_PLAY_TIMEOUT = 102;
-    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 25 * 1000L; // 提高基础超时时间至 25 秒，避免 4K 网盘过早放弃
+    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 30 * 1000L; // 针对4K网盘慢速解析，放宽至30秒
     private static final long SWITCH_LINE_PLAY_TIMEOUT_MS = 20 * 1000L;
     private MyVideoView mVideoView;
     private TextView mPlayLoadTip;
@@ -451,7 +451,7 @@ public class PlayFragment extends BaseLazyFragment {
             @Override
             public void startPlayUrl(String url, HashMap<String, String> headers) {
                 if (!TextUtils.isEmpty(m3u8SourceUrl) && !isM3u8ProxyUrl(url)) clearM3u8ProxyUrl();
-                // 用户在菜单中切换播放器或线路时，先彻底释放当前播放器，杜绝新旧播放器状态冲突
+                // 关键重构：在菜单手动选择新播放器或换线时，强行 release 彻底释放底层管道
                 if (mVideoView != null) {
                     mVideoView.release();
                 }
@@ -992,7 +992,7 @@ public class PlayFragment extends BaseLazyFragment {
         mController.playM3u8(url, headers);
     }
 
-    // 核心判定：精准校验运行中实例与期望目标播放器是否一致，杜绝内核不匹配的假复用
+    // 核心内核判断：将 MPV (3) 与 IJK (1)、EXO (2) 并列为内置核心播放器
     private boolean isSamePlayerType(AbstractPlayer player, int targetType) {
         if (player == null) return false;
         if (targetType == 1 && player instanceof IjkMediaPlayer) return true;
@@ -1019,7 +1019,7 @@ public class PlayFragment extends BaseLazyFragment {
                     if (finalUrl != null) {
                         String url = finalUrl;
                         int playerType = mVodPlayerCfg.optInt("pl", 2);
-                        // 只有等于或大于 10 的才是第三方外部播放器
+                        // 10 及以上才为第三方外部播放器
                         if (playerType >= 10) {
                             mVideoView.release();
                             VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
@@ -1037,7 +1037,7 @@ public class PlayFragment extends BaseLazyFragment {
                                 || url.contains(".mpd") || url.contains("type=mpd");
                         int targetPlayerType = forceExoPlayer ? 2 : playerType;
 
-                        // 核心修复：内核改变或强制Exo时必须彻底释放重建，禁止错误复用
+                        // 关键修复：当内核类型不同时彻底释放重建，杜绝错误复用导致崩溃和退回主页
                         boolean samePlayer = isSamePlayerType(mVideoView.getMediaPlayer(), targetPlayerType);
                         boolean reusePlayer = samePlayer && !forceExoPlayer && mVideoView.getMediaPlayer() != null;
 
@@ -1079,7 +1079,7 @@ public class PlayFragment extends BaseLazyFragment {
         });
     }
 
-    // ===== 第一部分结束 (请见下轮回复继续拼接第二部分) =====
+    // ===== 第 1 部分结束，请回复“继续”获取第 2 部分 =====
 private String attachProxySiteKey(String url) {
         if (TextUtils.isEmpty(url) || TextUtils.isEmpty(sourceKey)) return url;
         if (!url.startsWith(ControlManager.get().getAddress(true) + "proxy?")) return url;
@@ -1264,7 +1264,7 @@ private String attachProxySiteKey(String url) {
                         String flag = info.optString("flag");
                         Object rawUrl = info.opt("url");
                         
-                        // 关键防御：彻底过滤 4K 网盘爬虫可能返回的 null 对象或空内容，防止崩溃
+                        // 针对4K网盘慢速解析与爬虫偶发返回null字符串的防御拦截
                         if (rawUrl == null || JSONObject.NULL.equals(rawUrl) || "null".equalsIgnoreCase(String.valueOf(rawUrl).trim())) {
                             handleResolvePlayUrlFailed("获取播放地址为空");
                             return;
@@ -1630,7 +1630,7 @@ private String attachProxySiteKey(String url) {
         } else {
             mVodInfo.playIndex++;
         }
-        reusePlayerOnSwitch = true;
+        reusePlayerOnSwitch = false; // 严防假复用
         play(false);
     }
 
@@ -1647,7 +1647,7 @@ private String attachProxySiteKey(String url) {
             return;
         }
         mVodInfo.playIndex--;
-        reusePlayerOnSwitch = true;
+        reusePlayerOnSwitch = false; // 严防假复用
         play(false);
     }
 
@@ -1680,7 +1680,7 @@ private String attachProxySiteKey(String url) {
                         || actualPosition >= episodes.size() || actualPosition == mVodInfo.playIndex) return;
                 triedLineFlags.clear();
                 mVodInfo.playIndex = actualPosition;
-                reusePlayerOnSwitch = true;
+                reusePlayerOnSwitch = false; // 彻底重置播放器
                 play(false);
             }
         });
@@ -1814,7 +1814,7 @@ private String attachProxySiteKey(String url) {
         hasAutoSwitchedPlayer = false;
         inheritProgressKey = preProgressKey;
         inheritProgress = preProgress;
-        reusePlayerOnSwitch = false; // 切线时确保彻底重置播放器
+        reusePlayerOnSwitch = false; // 切线时确保彻底重建播放器
         play(false);
         return true;
     }
@@ -2624,7 +2624,7 @@ private String attachProxySiteKey(String url) {
         return info;
     }
 
-    // webview 相关变量与实现
+    // WebView 嗅探实现
     private XWalkView mXwalkWebView;
     private WebView mSysWebView;
     private final Map<String, Boolean> loadedUrls = new HashMap<>();
