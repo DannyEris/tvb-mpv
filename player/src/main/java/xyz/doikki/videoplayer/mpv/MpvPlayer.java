@@ -34,13 +34,14 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("gpu-context", "android");
         MPVLib.setOptionString("hwdec", "mediacodec,auto");
         MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 算力
+        MPVLib.setOptionString("force-window", "yes");
+        MPVLib.setOptionString("pause", "yes"); // 初始暂停等待缓冲
         MPVLib.init();
         MPVLib.addObserver(this);
     }
 
     @Override
     public void setOptions() {
-        // 实现 AbstractPlayer 的抽象方法
     }
 
     public void setHdrToSdrMode(int mode) {
@@ -51,20 +52,18 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     private void applyHdrToSdr() {
         boolean enableToneMapping = false;
         if (mHdrMode == 1) {
-            enableToneMapping = true; // 强制开启
+            enableToneMapping = true;
         } else if (mHdrMode == 2) {
-            enableToneMapping = false; // 强制关闭
+            enableToneMapping = false;
         } else {
-            enableToneMapping = !isDisplayHdrSupported(); // 自动判断
+            enableToneMapping = !isDisplayHdrSupported();
         }
 
         if (enableToneMapping) {
-            // 启用 HDR to SDR 色调映射
             MPVLib.setPropertyString("target-trc", "bt.709");
             MPVLib.setPropertyString("target-prim", "bt.709");
             MPVLib.setPropertyString("tone-mapping", "mobius");
         } else {
-            // 直通模式
             MPVLib.setPropertyString("target-trc", "auto");
             MPVLib.setPropertyString("target-prim", "auto");
             MPVLib.setPropertyString("tone-mapping", "clip");
@@ -86,7 +85,28 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
+        // 关键修复：传递防盗链 Headers 给 MPV
+        if (headers != null && !headers.isEmpty()) {
+            StringBuilder headerSb = new StringBuilder();
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                String key = entry.getKey();
+                String val = entry.getValue();
+                if (key != null && val != null) {
+                    if (key.equalsIgnoreCase("user-agent")) {
+                        MPVLib.setOptionString("user-agent", val);
+                    } else if (key.equalsIgnoreCase("referer")) {
+                        MPVLib.setOptionString("referrer", val);
+                    } else {
+                        headerSb.append(key).append(": ").append(val).append("\r\n");
+                    }
+                }
+            }
+            if (headerSb.length() > 0) {
+                MPVLib.setOptionString("http-header-fields", headerSb.toString().trim());
+            }
+        }
         applyHdrToSdr();
+        mIsPreparing = true;
         MPVLib.command(new String[]{"loadfile", path, "replace"});
     }
 
@@ -153,7 +173,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setSurface(Surface surface) {
-        if (surface != null) {
+        if (surface != null && surface.isValid()) {
             MPVLib.attachSurface(surface);
         } else {
             MPVLib.detachSurface();
@@ -162,7 +182,11 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDisplay(SurfaceHolder holder) {
-        if (holder != null) setSurface(holder.getSurface());
+        if (holder != null) {
+            setSurface(holder.getSurface());
+        } else {
+            setSurface(null);
+        }
     }
 
     @Override
@@ -197,22 +221,29 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void event(int eventId) {
-        if (eventId == MPVLib.mpvEventId.MPV_EVENT_PLAYBACK_RESTART && mIsPreparing) {
-            mIsPreparing = false;
-            mMainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    if (mPlayerEventListener != null) {
-                        mPlayerEventListener.onPrepared();
+        if (eventId == MPVLib.mpvEventId.MPV_EVENT_FILE_LOADED || eventId == MPVLib.mpvEventId.MPV_EVENT_PLAYBACK_RESTART) {
+            if (mIsPreparing) {
+                mIsPreparing = false;
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mPlayerEventListener != null) {
+                            mPlayerEventListener.onPrepared();
+                        }
                     }
-                }
-            });
+                });
+            }
         } else if (eventId == MPVLib.mpvEventId.MPV_EVENT_END_FILE) {
             mMainHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     if (mPlayerEventListener != null) {
-                        mPlayerEventListener.onCompletion();
+                        if (mIsPreparing) {
+                            // 准备阶段直接结束说明流媒体地址失效或加载失败
+                            mPlayerEventListener.onError();
+                        } else {
+                            mPlayerEventListener.onCompletion();
+                        }
                     }
                 }
             });
