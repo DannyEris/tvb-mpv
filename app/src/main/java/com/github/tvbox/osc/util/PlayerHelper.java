@@ -20,9 +20,10 @@ import org.json.JSONObject;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 import tv.danmaku.ijk.media.player.IjkLibLoader;
+import xyz.doikki.videoplayer.mpv.MpvPlayerFactory;
 import xyz.doikki.videoplayer.player.PlayerFactory;
 import xyz.doikki.videoplayer.player.VideoView;
 import xyz.doikki.videoplayer.render.RenderViewFactory;
@@ -30,9 +31,10 @@ import xyz.doikki.videoplayer.render.TextureRenderViewFactory;
 
 public class PlayerHelper {
     public static void updateCfg(VideoView videoView, JSONObject playerCfg) {
-        updateCfg(videoView,playerCfg,-1);
+        updateCfg(videoView, playerCfg, -1);
     }
-    public static void updateCfg(VideoView videoView, JSONObject playerCfg,int forcePlayerType) {
+
+    public static void updateCfg(VideoView videoView, JSONObject playerCfg, int forcePlayerType) {
         int playerType = Hawk.get(HawkConfig.PLAY_TYPE, 2);
         int renderType = Hawk.get(HawkConfig.PLAY_RENDER, 0);
         String ijkCode = Hawk.get(HawkConfig.IJK_CODEC, "硬解码");
@@ -45,7 +47,7 @@ public class PlayerHelper {
         } catch (JSONException e) {
             e.printStackTrace();
         }
-        if(forcePlayerType>=0)playerType = forcePlayerType;
+        if (forcePlayerType >= 0) playerType = forcePlayerType;
         IJKCode codec = ApiConfig.get().getIJKCodec(ijkCode);
         PlayerFactory playerFactory;
         if (playerType == 1) {
@@ -71,9 +73,14 @@ public class PlayerHelper {
             }
         } else if (playerType == 2) {
             playerFactory = ExoMediaPlayerFactory.create();
+        } else if (playerType == 3) {
+            // 新增 MPV 播放器内核分发：读取 HDR to SDR 选项 (0:自动, 1:开启, 2:关闭)
+            int hdrMode = Hawk.get(HawkConfig.MPV_HDR_TO_SDR, 0);
+            playerFactory = MpvPlayerFactory.create(hdrMode);
         } else {
             playerFactory = ExoMediaPlayerFactory.create();
         }
+
         RenderViewFactory renderViewFactory = null;
         switch (renderType) {
             case 0:
@@ -84,7 +91,7 @@ public class PlayerHelper {
                 renderViewFactory = SurfaceRenderViewFactory.create();
                 break;
         }
-        if(videoView!=null){
+        if (videoView != null) {
             videoView.setPlayerFactory(playerFactory);
             videoView.setRenderViewFactory(renderViewFactory);
             videoView.setScreenScaleType(scale);
@@ -117,6 +124,10 @@ public class PlayerHelper {
             }
         } else if (playType == 2) {
             playerFactory = ExoMediaPlayerFactory.create();
+        } else if (playType == 3) {
+            // 新增 MPV 播放器内核分发
+            int hdrMode = Hawk.get(HawkConfig.MPV_HDR_TO_SDR, 0);
+            playerFactory = MpvPlayerFactory.create(hdrMode);
         } else {
             playerFactory = ExoMediaPlayerFactory.create();
         }
@@ -134,7 +145,6 @@ public class PlayerHelper {
         videoView.setPlayerFactory(playerFactory);
         videoView.setRenderViewFactory(renderViewFactory);
     }
-
 
     public static void init() {
         try {
@@ -154,7 +164,7 @@ public class PlayerHelper {
     }
 
     public static String getPlayerName(int playType) {
-        HashMap<Integer, String> playersInfo = getPlayersInfo();
+        LinkedHashMap<Integer, String> playersInfo = getPlayersInfo();
         if (playersInfo.containsKey(playType)) {
             return playersInfo.get(playType);
         } else {
@@ -162,12 +172,13 @@ public class PlayerHelper {
         }
     }
 
-    private static HashMap<Integer, String> mPlayersInfo = null;
-    public static HashMap<Integer, String> getPlayersInfo() {
+    private static LinkedHashMap<Integer, String> mPlayersInfo = null;
+    public static LinkedHashMap<Integer, String> getPlayersInfo() {
         if (mPlayersInfo == null) {
-            HashMap<Integer, String> playersInfo = new HashMap<>();
-            playersInfo.put(1, "IJK播放器");
+            LinkedHashMap<Integer, String> playersInfo = new LinkedHashMap<>();
             playersInfo.put(2, "EXO播放器");
+            playersInfo.put(1, "IJK播放器");
+            playersInfo.put(3, "MPV播放器"); // 新增 MPV 播放器注册
             playersInfo.put(10, "MX播放器");
             playersInfo.put(11, "Reex播放器");
             playersInfo.put(12, "Kodi播放器");
@@ -178,12 +189,13 @@ public class PlayerHelper {
         return mPlayersInfo;
     }
 
-    private static HashMap<Integer, Boolean> mPlayersExistInfo = null;
-    public static HashMap<Integer, Boolean> getPlayersExistInfo() {
+    private static LinkedHashMap<Integer, Boolean> mPlayersExistInfo = null;
+    public static LinkedHashMap<Integer, Boolean> getPlayersExistInfo() {
         if (mPlayersExistInfo == null) {
-            HashMap<Integer, Boolean> playersExist = new HashMap<>();
-            playersExist.put(1, true);
+            LinkedHashMap<Integer, Boolean> playersExist = new LinkedHashMap<>();
             playersExist.put(2, true);
+            playersExist.put(1, true);
+            playersExist.put(3, true); // 开启 MPV 存在标识
             playersExist.put(10, MXPlayer.getPackageInfo() != null);
             playersExist.put(11, ReexPlayer.getPackageInfo() != null);
             playersExist.put(12, Kodi.getPackageInfo() != null);
@@ -195,7 +207,7 @@ public class PlayerHelper {
     }
 
     public static Boolean getPlayerExist(int playType) {
-        HashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
+        LinkedHashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
         if (playersExistInfo.containsKey(playType)) {
             return playersExistInfo.get(playType);
         } else {
@@ -204,9 +216,9 @@ public class PlayerHelper {
     }
 
     public static ArrayList<Integer> getExistPlayerTypes() {
-        HashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
+        LinkedHashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
         ArrayList<Integer> existPlayers = new ArrayList<>();
-        for(Integer playerType : playersExistInfo.keySet()) {
+        for (Integer playerType : playersExistInfo.keySet()) {
             if (playersExistInfo.get(playerType)) {
                 existPlayers.add(playerType);
             }
@@ -214,11 +226,11 @@ public class PlayerHelper {
         return existPlayers;
     }
 
-    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers) {
-        return runExternalPlayer(playerType, activity, url, title, subtitle, headers);
+    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, LinkedHashMap<String, String> headers) {
+        return runExternalPlayer(playerType, activity, url, title, subtitle, headers, 0);
     }
 
-    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers, long progress) {
+    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, LinkedHashMap<String, String> headers, long progress) {
         boolean callResult = false;
         switch (playerType) {
             case 10: {
@@ -278,14 +290,15 @@ public class PlayerHelper {
         return scaleText;
     }
 
-    public static String getDisplaySpeed(long speed,boolean show) {
-        if(speed > 1048576)
+    public static String getDisplaySpeed(long speed, boolean show) {
+        if (speed > 1048576)
             return new DecimalFormat("#.00").format(speed / 1048576d) + "Mb/s";
-        else if(speed > 1024)
+        else if (speed > 1024)
             return (speed / 1024) + "Kb/s";
         else
-            return speed > 0?speed + "B/s":(show?"0B/s":"");
+            return speed > 0 ? speed + "B/s" : (show ? "0B/s" : "");
     }
+
     public static String getDisplaySpeedBps(long speed, boolean show) {
         long bitSpeed = speed * 8; // 字节转比特
         if (bitSpeed >= 1_000_000_000) {
