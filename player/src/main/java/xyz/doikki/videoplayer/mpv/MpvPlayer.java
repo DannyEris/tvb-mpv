@@ -90,7 +90,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        // 关键修复：MPV 初始化后必须使用 setPropertyString 注入网盘防盗链 Headers
+        // 传递防盗链 Headers 给 MPV
         if (headers != null && !headers.isEmpty()) {
             StringBuilder headerSb = new StringBuilder();
             for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -142,7 +142,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     @Override
     public void reset() {
         stop();
-        setSurface(null); // 解绑并释放 Surface 供后续播放器复用
+        setSurface(null);
     }
 
     @Override
@@ -157,7 +157,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void release() {
-        setSurface(null); // 释放画面绑定，防止污染其他播放器
+        setSurface(null);
         MPVLib.removeObserver(this);
         MPVLib.destroy();
     }
@@ -242,7 +242,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                                 mPlayerEventListener.onVideoSizeChanged(w.intValue(), h.intValue());
                             }
                             mPlayerEventListener.onPrepared();
-                            mPlayerEventListener.onInfo(AbstractPlayer.MEDIA_INFO_VIDEO_RENDERING_START, 0);
                         }
                     }
                 });
