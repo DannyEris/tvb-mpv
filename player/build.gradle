@@ -5,7 +5,7 @@ plugins {
 android {
     compileSdkVersion 33
     defaultConfig {
-        minSdkVersion 21 // MPV 最低运行门槛提升至 API 21
+        minSdkVersion 21
         targetSdkVersion 28
     }
     buildTypes {
@@ -17,6 +17,7 @@ android {
         release {
             minifyEnabled false
             ndk {
+                //noinspection ChromeOsAbiSupport
                 abiFilters 'armeabi-v7a', 'arm64-v8a'
             }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -32,6 +33,11 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
 }
 
 dependencies {
@@ -46,7 +52,4 @@ dependencies {
     api "com.google.android.exoplayer:exoplayer-datasource:2.19.1"
     api "com.google.android.exoplayer:extension-rtmp:2.19.1"
     api 'xyz.doikki.android.dkplayer:dkplayer-ui:3.3.5'
-
-    // 引入 libs 目录中的 mpv-android.aar
-    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 }
