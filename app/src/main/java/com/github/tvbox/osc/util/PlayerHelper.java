@@ -20,6 +20,7 @@ import org.json.JSONObject;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 
 import tv.danmaku.ijk.media.player.IjkLibLoader;
@@ -164,7 +165,7 @@ public class PlayerHelper {
     }
 
     public static String getPlayerName(int playType) {
-        LinkedHashMap<Integer, String> playersInfo = getPlayersInfo();
+        HashMap<Integer, String> playersInfo = getPlayersInfo();
         if (playersInfo.containsKey(playType)) {
             return playersInfo.get(playType);
         } else {
@@ -172,8 +173,8 @@ public class PlayerHelper {
         }
     }
 
-    private static LinkedHashMap<Integer, String> mPlayersInfo = null;
-    public static LinkedHashMap<Integer, String> getPlayersInfo() {
+    private static HashMap<Integer, String> mPlayersInfo = null;
+    public static HashMap<Integer, String> getPlayersInfo() {
         if (mPlayersInfo == null) {
             LinkedHashMap<Integer, String> playersInfo = new LinkedHashMap<>();
             playersInfo.put(2, "EXO播放器");
@@ -189,8 +190,8 @@ public class PlayerHelper {
         return mPlayersInfo;
     }
 
-    private static LinkedHashMap<Integer, Boolean> mPlayersExistInfo = null;
-    public static LinkedHashMap<Integer, Boolean> getPlayersExistInfo() {
+    private static HashMap<Integer, Boolean> mPlayersExistInfo = null;
+    public static HashMap<Integer, Boolean> getPlayersExistInfo() {
         if (mPlayersExistInfo == null) {
             LinkedHashMap<Integer, Boolean> playersExist = new LinkedHashMap<>();
             playersExist.put(2, true);
@@ -207,7 +208,7 @@ public class PlayerHelper {
     }
 
     public static Boolean getPlayerExist(int playType) {
-        LinkedHashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
+        HashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
         if (playersExistInfo.containsKey(playType)) {
             return playersExistInfo.get(playType);
         } else {
@@ -216,7 +217,7 @@ public class PlayerHelper {
     }
 
     public static ArrayList<Integer> getExistPlayerTypes() {
-        LinkedHashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
+        HashMap<Integer, Boolean> playersExistInfo = getPlayersExistInfo();
         ArrayList<Integer> existPlayers = new ArrayList<>();
         for (Integer playerType : playersExistInfo.keySet()) {
             if (playersExistInfo.get(playerType)) {
@@ -226,11 +227,11 @@ public class PlayerHelper {
         return existPlayers;
     }
 
-    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, LinkedHashMap<String, String> headers) {
+    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers) {
         return runExternalPlayer(playerType, activity, url, title, subtitle, headers, 0);
     }
 
-    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, LinkedHashMap<String, String> headers, long progress) {
+    public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers, long progress) {
         boolean callResult = false;
         switch (playerType) {
             case 10: {
@@ -300,7 +301,7 @@ public class PlayerHelper {
     }
 
     public static String getDisplaySpeedBps(long speed, boolean show) {
-        long bitSpeed = speed * 8; // 字节转比特
+        long bitSpeed = speed * 8;
         if (bitSpeed >= 1_000_000_000) {
             return new DecimalFormat("0.00").format(bitSpeed / 1_000_000_000d) + "Gbps";
         } else if (bitSpeed >= 1_000_000) {
