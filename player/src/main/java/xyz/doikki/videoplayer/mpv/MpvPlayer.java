@@ -20,7 +20,12 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     protected final Context mAppContext;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private boolean mIsPreparing = false;
+    private boolean mFileLoaded = false;
     private int mHdrMode = 0; // 0: 自动, 1: 开启, 2: 关闭
+
+    private Surface mSurface;
+    private String mDataSourceUrl;
+    private Map<String, String> mHeaders;
 
     public MpvPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -33,10 +38,9 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("vo", "gpu");
         MPVLib.setOptionString("gpu-context", "android");
         MPVLib.setOptionString("hwdec", "mediacodec,auto");
-        MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 算力
+        MPVLib.setOptionString("hdr-compute-peak", "no");
         MPVLib.setOptionString("force-window", "yes");
         MPVLib.setOptionString("pause", "yes");
-        // 关键配置：解决电视老旧系统访问网盘 HTTPS 握手失败及避免内存溢出
         MPVLib.setOptionString("tls-verify", "no");
         MPVLib.setOptionString("ytdl", "no");
         MPVLib.setOptionString("demuxer-max-bytes", "32MiB");
@@ -90,10 +94,29 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        // 传递防盗链 Headers 给 MPV
-        if (headers != null && !headers.isEmpty()) {
+        this.mDataSourceUrl = path;
+        this.mHeaders = headers;
+        this.mFileLoaded = false;
+    }
+
+    @Override
+    public void setDataSource(AssetFileDescriptor fd) {}
+
+    @Override
+    public void prepareAsync() {
+        mIsPreparing = true;
+        // 如果 Surface 已经就绪，立刻触发加载；若还没就绪，将在 setSurface 回调时安全触发
+        if (mSurface != null && mSurface.isValid() && mDataSourceUrl != null) {
+            startLoadFileInternal();
+        }
+    }
+
+    private void startLoadFileInternal() {
+        if (mDataSourceUrl == null) return;
+
+        if (mHeaders != null && !mHeaders.isEmpty()) {
             StringBuilder headerSb = new StringBuilder();
-            for (Map.Entry<String, String> entry : headers.entrySet()) {
+            for (Map.Entry<String, String> entry : mHeaders.entrySet()) {
                 String key = entry.getKey();
                 String val = entry.getValue();
                 if (key != null && val != null) {
@@ -112,12 +135,8 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
             }
         }
         applyHdrToSdr();
-        mIsPreparing = true;
-        MPVLib.command(new String[]{"loadfile", path, "replace"});
+        MPVLib.command(new String[]{"loadfile", mDataSourceUrl, "replace"});
     }
-
-    @Override
-    public void setDataSource(AssetFileDescriptor fd) {}
 
     @Override
     public void start() {
@@ -132,11 +151,9 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
     @Override
     public void stop() {
         MPVLib.command(new String[]{"stop"});
-    }
-
-    @Override
-    public void prepareAsync() {
-        mIsPreparing = true;
+        mDataSourceUrl = null;
+        mIsPreparing = false;
+        mFileLoaded = false;
     }
 
     @Override
@@ -157,7 +174,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void release() {
-        setSurface(null);
+        reset();
         MPVLib.removeObserver(this);
         MPVLib.destroy();
     }
@@ -181,8 +198,13 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setSurface(Surface surface) {
+        this.mSurface = surface;
         if (surface != null && surface.isValid()) {
             MPVLib.attachSurface(surface);
+            // 核心安全时序：Surface 就绪后，若处于准备中且尚未开始加载，立即触发启动
+            if (mIsPreparing && mDataSourceUrl != null && !mFileLoaded) {
+                startLoadFileInternal();
+            }
         } else {
             MPVLib.detachSurface();
         }
@@ -232,6 +254,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         if (eventId == MPVLib.mpvEventId.MPV_EVENT_FILE_LOADED || eventId == MPVLib.mpvEventId.MPV_EVENT_PLAYBACK_RESTART) {
             if (mIsPreparing) {
                 mIsPreparing = false;
+                mFileLoaded = true;
                 mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -251,10 +274,11 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
                 @Override
                 public void run() {
                     if (mPlayerEventListener != null) {
-                        if (mIsPreparing) {
-                            mPlayerEventListener.onError();
-                        } else {
+                        // 只有在真正加载过文件且自然播放完毕时才通知完成，杜绝初始替换时的误触发
+                        if (mFileLoaded) {
                             mPlayerEventListener.onCompletion();
+                        } else if (mIsPreparing && mSurface != null) {
+                            mPlayerEventListener.onError();
                         }
                     }
                 }
