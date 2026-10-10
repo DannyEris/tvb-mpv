@@ -137,8 +137,8 @@ android {
 //        additionalParameters += '--minimal-main-dex'
 //    }
     configurations.all {
-    exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
-}
+        exclude group: 'tv.danmaku.ijk.media', module: 'ijkplayer-java'
+        }
 }
 
 repositories {
