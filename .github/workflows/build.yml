@@ -10,9 +10,9 @@ on:
         type: choice
         options:
           - assembleRelease          # 构建全部版本 (通用双架构版、32位版、64位版)
-          - assemblePython32Release  # 仅构建 32位版 (推荐：体积小，兼顾绝大多数电视机顶盒)
-          - assemblePython64Release  # 仅构建 64位版 (适用于高性能盒子或纯64位固件设备)
-          - assemblePythonRelease    # 仅构建 双架构通用版 (含32位与64位)
+          - assemblePython32Release  # 仅构建 32位版 (天猫魔盒M19推荐选此项)
+          - assemblePython64Release  # 仅构建 64位版 (适用于高性能64位盒子)
+          - assemblePythonRelease    # 仅构建 双架构通用版
 
 jobs:
   build:
@@ -48,31 +48,51 @@ jobs:
 
           echo "===> 正在解压 Native 动态库..."
           for apk in ./mpv_temp/*.apk; do
-            echo "处理安装包: $apk"
             unzip -o -j "$apk" "lib/armeabi-v7a/*.so" -d player/src/main/jniLibs/armeabi-v7a/ 2>/dev/null || true
             unzip -o -j "$apk" "lib/arm64-v8a/*.so" -d player/src/main/jniLibs/arm64-v8a/ 2>/dev/null || true
           done
           rm -rf ./mpv_temp
 
-          echo "===> 验证提取结果 (armeabi-v7a):"
-          ls -lh player/src/main/jniLibs/armeabi-v7a/libmpv.so
-          echo "===> 验证提取结果 (arm64-v8a):"
-          ls -lh player/src/main/jniLibs/arm64-v8a/libmpv.so
-
-      # 创建 local.properties 供 Chaquopy 插件读取，避免抛出 FileNotFoundException
+      # 创建 local.properties 供 Chaquopy 插件读取
       - name: Create local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          cat local.properties
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
+      # 编译 APK
       - name: Build APK with Gradle
         run: ./gradlew ${{ inputs.build_flavor }} --stacktrace
 
+      # 自动对齐并注入 V1 + V2 签名（解决电视盒子解析包错误的关键）
+      - name: Sign & Align APK
+        run: |
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          echo "使用 Build Tools 路径: $BUILD_TOOLS_DIR"
+
+          # 自动生成通用兼容签名文件
+          keytool -genkey -v -keystore release.keystore -alias tvbox -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=TVBox, OU=TVBox, O=TVBox, C=CN"
+
+          mkdir -p release_apks
+          for apk in app/build/outputs/apk/*/*/*.apk; do
+            if [ -f "$apk" ]; then
+              base_name=$(basename "$apk" .apk)
+              echo "===> 正在对齐并签名: $base_name"
+              # 1. 4字节对齐
+              $BUILD_TOOLS_DIR/zipalign -v -p 4 "$apk" "release_apks/${base_name}-aligned.apk"
+              # 2. 注入 V1 + V2 签名
+              $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:123456 --ks-key-alias tvbox --key-pass pass:123456 --v1-signing-enabled true --v2-signing-enabled true --out "release_apks/${base_name}-signed.apk" "release_apks/${base_name}-aligned.apk"
+              rm -f "release_apks/${base_name}-aligned.apk"
+            fi
+          done
+          rm -f release.keystore
+          echo "===> 签名完成的安装包列表："
+          ls -lh release_apks/
+
+      # 上传签名后的有效 APK
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: TVBox-MPV-Release
-          path: app/build/outputs/apk/*/*/*.apk
+          name: TVBox-MPV-Signed
+          path: release_apks/*-signed.apk
