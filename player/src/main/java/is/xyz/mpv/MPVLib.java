@@ -6,25 +6,11 @@ import android.view.Surface;
 public class MPVLib {
 
     static {
-        // 必须按依赖倒序加载完整库链，确保 Android 系统底层链接器能够解析所有符号
-        String[] libs = {
-            "c++_shared",
-            "avutil",
-            "swresample",
-            "avcodec",
-            "avformat",
-            "swscale",
-            "avfilter",
-            "avdevice",
-            "mpv",
-            "player"
-        };
-        for (String lib : libs) {
-            try {
-                System.loadLibrary(lib);
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
+        // 仅加载主桥接库，让系统底层链接器通过 DT_NEEDED 自动处理私有依赖，严禁全局显式加载 avcodec 等
+        try {
+            System.loadLibrary("player");
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -51,7 +37,7 @@ public class MPVLib {
         public static final int MPV_EVENT_PROPERTY_CHANGE = 22;
     }
 
-    // 严禁删减此接口方法，底层 libplayer.so JNI 初始化严格依赖这些方法签名
+    // 严禁删减这 5 个属性观察方法签名，C 库 JNI 初始化严格依赖这些方法
     public interface EventObserver {
         void eventProperty(String property);
         void eventProperty(String property, long value);
