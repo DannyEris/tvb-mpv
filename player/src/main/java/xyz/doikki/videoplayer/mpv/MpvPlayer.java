@@ -15,10 +15,9 @@ import xyz.doikki.videoplayer.player.AbstractPlayer;
 
 public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
-    private final Context mAppContext;
-    private Surface mSurface;
+    protected final Context mAppContext;
     private boolean mIsPreparing = false;
-    private int mHdrMode = 0; // 0: 自动, 1: 强制开, 2: 强制关
+    private int mHdrMode = 0; // 0: 自动, 1: 开启, 2: 关闭
 
     public MpvPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -31,7 +30,7 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
         MPVLib.setOptionString("vo", "gpu");
         MPVLib.setOptionString("gpu-context", "android");
         MPVLib.setOptionString("hwdec", "mediacodec,auto");
-        MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 开销
+        MPVLib.setOptionString("hdr-compute-peak", "no"); // 节约电视 GPU 算力
         MPVLib.init();
         MPVLib.addObserver(this);
     }
@@ -43,19 +42,21 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     private void applyHdrToSdr() {
         boolean enableToneMapping = false;
-        if (mHdrMode == 1) { // 强制开启
-            enableToneMapping = true;
-        } else if (mHdrMode == 2) { // 强制关闭
-            enableToneMapping = false;
-        } else { // 自动判断
-            enableToneMapping = !isDisplayHdrSupported();
+        if (mHdrMode == 1) {
+            enableToneMapping = true; // 强制开启
+        } else if (mHdrMode == 2) {
+            enableToneMapping = false; // 强制关闭
+        } else {
+            enableToneMapping = !isDisplayHdrSupported(); // 自动判断
         }
 
         if (enableToneMapping) {
+            // 启用 HDR to SDR 色调映射
             MPVLib.setPropertyString("target-trc", "bt.709");
             MPVLib.setPropertyString("target-prim", "bt.709");
             MPVLib.setPropertyString("tone-mapping", "mobius");
         } else {
+            // 直通模式
             MPVLib.setPropertyString("target-trc", "auto");
             MPVLib.setPropertyString("target-prim", "auto");
             MPVLib.setPropertyString("tone-mapping", "clip");
@@ -144,7 +145,6 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
 
     @Override
     public void setSurface(Surface surface) {
-        mSurface = surface;
         if (surface != null) {
             MPVLib.attachSurface(surface);
         } else {
@@ -198,16 +198,4 @@ public class MpvPlayer extends AbstractPlayer implements MPVLib.EventObserver {
             setPlayerState(STATE_PLAYBACK_COMPLETED);
         }
     }
-
-    @Override
-    public void propertyChange(String name, long value) {}
-
-    @Override
-    public void propertyChange(String name, boolean value) {}
-
-    @Override
-    public void propertyChange(String name, String value) {}
-
-    @Override
-    public void propertyChange(String name, double value) {}
 }
