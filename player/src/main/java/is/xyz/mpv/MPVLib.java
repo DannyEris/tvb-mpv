@@ -6,9 +6,26 @@ import android.view.Surface;
 public class MPVLib {
 
     static {
-        try { System.loadLibrary("c++_shared"); } catch (Throwable ignored) {}
-        try { System.loadLibrary("mpv"); } catch (Throwable ignored) {}
-        try { System.loadLibrary("player"); } catch (Throwable t) { t.printStackTrace(); }
+        // 在老旧 Android/YunOS 系统上，必须按底层依赖顺序提前装载入进程空间
+        String[] libs = {
+            "c++_shared",
+            "avutil",
+            "swresample",
+            "avcodec",
+            "avformat",
+            "swscale",
+            "avfilter",
+            "avdevice",
+            "mpv",
+            "player"
+        };
+        for (String lib : libs) {
+            try {
+                System.loadLibrary(lib);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
     }
 
     public static class mpvEventId {
